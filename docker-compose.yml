@@ -1,0 +1,65 @@
+
+version: "3.9"
+
+services:
+    db:
+        image: postgres:alpine
+        volumes:
+            - ./data/db:/var/lib/postgresql/data
+        environment: 
+            - POSTGRES_DB=filmdom
+            - POSTGRES_USER=michal
+            - POSTGRES_PASSWORD=michal
+        restart: on-failure
+
+    rabbit1:
+        image: rabbitmq:alpine
+        ports:
+            - "5672:5672"
+        logging:
+            driver: none
+        environment: 
+            - RABBITMQ_USER=user
+            - RABBITMQ_PASS=password
+        restart: on-failure
+
+    web:
+        build: ./filmdom-backend
+        command: >
+            /bin/sh -c "python manage.py makemigrations
+            && python manage.py migrate
+            && python manage.py createsuperuser --noinput --username admin --email admin@pp.ll 
+            ; python manage.py runserver 0.0.0.0:8000"
+        working_dir: /code/filmdom-backend
+        environment:
+            - DJANGO_SUPERUSER_PASSWORD=idego
+        volumes:
+            - .:/code
+        ports:
+            - "8000:8000"
+        depends_on: 
+            - db
+
+    celery_worker:
+        build: ./filmdom-backend
+        command: "celery -A filmdom worker --loglevel=INFO -B"
+        working_dir: /code/filmdom-backend
+        volumes:
+            - .:/code
+        depends_on: 
+            - web
+            - db
+            - rabbit1
+
+    frontend:
+        build: ./filmdom-frontend
+        command: >
+            /bin/sh -c "yarn
+            && yarn start"
+        working_dir: /app/filmdom-frontend
+        volumes: 
+            - .:/app
+        ports:
+            - "3000:3000"
+        depends_on: 
+            - web
